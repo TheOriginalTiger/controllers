@@ -2,44 +2,100 @@
 #include <stdint.h>
 
 
+#define BUTTON_FILTER 5
+
 
 volatile uint8_t flag = 0 ;
 
 volatile uint8_t pressed1 = 0;
-volatile uint8_t pressed2 = 0;
-volatile uint8_t pressed3 = 0;
-volatile uint8_t pressed4 = 0;
+volatile int counter1 = 0;
 
+volatile uint8_t pressed2 = 0;
+volatile int counter2 = 0;
+
+volatile uint8_t pressed3 = 0;
+volatile int counter3 = 0;
+
+volatile uint8_t pressed4 = 0;
+volatile int counter4 = 0;
+
+
+void changer(volatile uint8_t* button, volatile int* counter)
+{
+
+	if (*counter == BUTTON_FILTER)
+	{
+		//*counter = 0 ;
+		switch (*button){
+		case(1):
+			*button = 0;
+			break;
+		default:
+			*button = 1;
+			break;
+		}
+	}
+}
+
+
+void checkButton(uint32_t* curr, volatile uint32_t* lastButton, volatile int* counter)
+{
+	if (*curr != *lastButton)
+	{
+		*counter = 0 ;
+		*lastButton = *curr;
+	}
+	else
+		(*counter)++;
+
+}
+
+
+volatile uint32_t lastButton1 = 0 ;
+volatile uint32_t lastButton2 = 0;
+volatile uint32_t lastButton3 = 0 ;
+volatile uint32_t lastButton4 = 0;
 void SysTick_Handler(void)
 {
 
-	pressed1 = pressed2 = pressed3 = pressed4 = 0;
-
+	uint32_t button1 = GPIOA->IDR & GPIO_IDR_4;
+	uint32_t button2 = GPIOA->IDR & GPIO_IDR_5;
 	if(flag)
 	{
 		flag = 0;
-		if(GPIOA->IDR & GPIO_IDR_4)
-			pressed1 = 1;
-		if (GPIOA->IDR & GPIO_IDR_5)
-			pressed2 = 1 ;
+		checkButton(&button1, &lastButton1, &counter1);
+		checkButton(&button2, &lastButton2, &counter2);
 
-		GPIOC->ODR |= GPIO_ODR_12;
-		GPIOA->ODR &= ~GPIO_ODR_15;
+		if(button1)
+		{
+			changer(&pressed1, &counter1);
+		}
+		if (button2)
+		{
+			changer(&pressed2,&counter2);
 
-		//GPIOC->BSRR =  GPIO_BSRR_BR_12 ;
-		//GPIOA->BSRR =  GPIO_BSRR_BS_15 ;
+		}
+		//GPIOC->ODR |= GPIO_ODR_12;
+		//GPIOA->ODR &= ~GPIO_ODR_15;
+
+		GPIOC->BSRR =  GPIO_BSRR_BS_12 ;
+		GPIOA->BSRR =  GPIO_BSRR_BR_15 ;
 	}
 	else
 	{
 		flag =1;
-		if(GPIOA->IDR & GPIO_IDR_4)
-			pressed3 = 1;
-		if (GPIOA->IDR & GPIO_IDR_5)
-			pressed4 = 1 ;
-		//GPIOC->BSRR = GPIO_BSRR_BS_12 ;
-		//GPIOA->BSRR = GPIO_BSRR_BR_15 ;
-		GPIOC->ODR &= ~GPIO_ODR_12;
-		GPIOA->ODR |= GPIO_ODR_15;
+		checkButton(&button1, &lastButton4, &counter4);
+		checkButton(&button2, &lastButton3, &counter3);
+
+		if(button1)
+			changer(&pressed4,&counter4);
+		if (button2)
+			changer(&pressed3,&counter3);
+
+		GPIOC->BSRR = GPIO_BSRR_BR_12 ;
+		GPIOA->BSRR = GPIO_BSRR_BS_15 ;
+		//GPIOA->ODR |= GPIO_ODR_15;
+		//GPIOC->ODR &= ~GPIO_ODR_12;
 
 	}
 }
@@ -49,74 +105,57 @@ static void Init3(void)
 {
 	RCC->AHBENR |= (RCC_AHBENR_GPIOCEN | RCC_AHBENR_GPIOAEN);
 	GPIOC->MODER |= (GPIO_MODER_MODER6_0 | GPIO_MODER_MODER7_0 | GPIO_MODER_MODER8_0 | GPIO_MODER_MODER9_0 | GPIO_MODER_MODER12_0);
-	GPIOC->PUPDR |=  (GPIO_PUPDR_PUPDR6_1 | (GPIO_PUPDR_PUPDR7_1) | (GPIO_PUPDR_PUPDR8_1) | (GPIO_PUPDR_PUPDR9_1));
+	//GPIOC->PUPDR |=  (GPIO_PUPDR_PUPDR6_1 | (GPIO_PUPDR_PUPDR7_1) | (GPIO_PUPDR_PUPDR8_1) | (GPIO_PUPDR_PUPDR9_1));
 	GPIOA->PUPDR |= (GPIO_PUPDR_PUPDR4_1 | GPIO_PUPDR_PUPDR5_1);
 	GPIOA->MODER |= GPIO_MODER_MODER15_0;
 
 	SystemCoreClockUpdate();
-	SysTick->LOAD = SystemCoreClock/1000  - 1;
+	SysTick->LOAD = SystemCoreClock/1000 - 1;
 	SysTick->VAL =  SystemCoreClock/1000 - 1;
 	SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_TICKINT_Msk;
 }
 
 
-/*
- * SysTick_CTRL_TICKINT_Msk enable interrupt
 
-static void task3(void)
-{
-
-	GPIOC->BSRR = GPIO_BSRR_BS_6;
-	int flag = 0;
-	uint32_t oldTimer = 0 ;
-	while(1)
-	{
-		int button = GPIOA->IDR & GPIO_IDR_0;
-		uint32_t timer = timerCounter - oldTimer;
-		if(timer)
-		{
-			oldTimer++;
-		}
-		if (button && flag == 0)
-		{
-				GPIOC->BSRR = GPIO_BSRR_BR_6 | GPIO_BSRR_BS_8;
-				flag = 1;
-		}		
-		else if (timer && flag == 1)
-		{
-			GPIOC->BSRR = GPIO_BSRR_BR_8 | GPIO_BSRR_BS_9;
-			flag = 2;
-		}
-		else if (timer && flag == 2)
-		{
-			
-			GPIOC->BSRR = GPIO_BSRR_BR_9 | GPIO_BSRR_BS_6;
-			flag = 0 ; 
-		}
-
-		if(button)
-		{
-			GPIOC->ODR |= GPIO_ODR_7;
-		}
-		GPIOC->ODR &= ~GPIO_ODR_7;
-	}
-}
-*/
 int main(void)
 {
+
+	// 6 - red
+	// 7 - blue
+	// 8 - yellow
+	// 9 - green
 	Init3();
 	while(1)
 	{
-		uint32_t mask = 0;
-		if (pressed1)
-			mask |= GPIO_ODR_6;
-		if (pressed2)
-			mask |= GPIO_ODR_7;;
-		if (pressed3)
-			mask |= GPIO_ODR_8;;
-		if (pressed4)
-			mask |= GPIO_ODR_9;;
-		GPIOC->ODR |= mask;
-		GPIOC->ODR &= ~(GPIO_ODR_6 | GPIO_ODR_7 | GPIO_ODR_8 | GPIO_ODR_9);
+		switch(pressed1) {
+		case(1):
+			GPIOC->BSRR = GPIO_BSRR_BS_6;
+			break;
+		default:
+			GPIOC->BSRR = GPIO_BSRR_BR_6;
+		}
+
+		switch(pressed2) {
+		case(1):
+			GPIOC->BSRR = GPIO_BSRR_BS_7;
+			break;
+		default:
+			GPIOC->BSRR = GPIO_BSRR_BR_7;
+
+		}
+		switch(pressed3){
+		case(1):
+			GPIOC->BSRR = GPIO_BSRR_BS_8;
+			break;
+		default:
+			GPIOC->BSRR = GPIO_BSRR_BR_8;
+		}
+		switch(pressed4){
+		case(1):
+			GPIOC->BSRR = GPIO_BSRR_BS_9;
+			break;
+		default:
+			GPIOC->BSRR = GPIO_BSRR_BR_9;
+		}
 	}
 }
