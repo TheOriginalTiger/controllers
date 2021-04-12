@@ -25,7 +25,6 @@ void changer(volatile uint8_t* button, volatile int* counter)
 
 	if (*counter == BUTTON_FILTER)
 	{
-		//*counter = 0 ;
 		switch (*button){
 		case(1):
 			*button = 0;
@@ -75,8 +74,6 @@ void SysTick_Handler(void)
 			changer(&pressed2,&counter2);
 
 		}
-		//GPIOC->ODR |= GPIO_ODR_12;
-		//GPIOA->ODR &= ~GPIO_ODR_15;
 
 		GPIOC->BSRR =  GPIO_BSRR_BS_12 ;
 		GPIOA->BSRR =  GPIO_BSRR_BR_15 ;
@@ -94,13 +91,35 @@ void SysTick_Handler(void)
 
 		GPIOC->BSRR = GPIO_BSRR_BR_12 ;
 		GPIOA->BSRR = GPIO_BSRR_BS_15 ;
-		//GPIOA->ODR |= GPIO_ODR_15;
-		//GPIOC->ODR &= ~GPIO_ODR_12;
 
 	}
 }
 
 
+void Init(void)
+{
+	RCC->AHBENR |= RCC_AHBENR_GPIOAEN;
+	GPIOA->MODER |= GPIO_MODER_MODER8_0;
+
+	//SPI config
+	RCC->APB1ENR |= RCC_APB1ENR_SPI2EN;
+	SPI2->CR1 = SPI_CR1_SSM | SPI_CR1_BR | SPI_CR1_MSTR | SPI_CR1_CPOL | SPI_CR1_CPHA;
+
+	SPI2->CR2 |= SPI_CR2_DS;
+	SPI->CR1 |= SPI_CR1_SRE;
+
+	RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
+	//GPIOB->AFR[0] |= Fn << 4 * pinNumber if Pn < 8
+	GPIOB->AFR[1] |= (0 << 4 * (13 - 8)) | (0 << 4 * (15 - 8));
+	GPIOB->MODER |= GPIO_MODER_MODER13_1 | GPIO_MODER_MODER15_1;
+
+}
+
+static void usage(void)
+{
+	SPI->DR = 0x0101;
+
+}
 static void Init3(void)
 {
 	RCC->AHBENR |= (RCC_AHBENR_GPIOCEN | RCC_AHBENR_GPIOAEN);
@@ -113,6 +132,10 @@ static void Init3(void)
 	SysTick->LOAD = SystemCoreClock/1000 - 1;
 	SysTick->VAL =  SystemCoreClock/1000 - 1;
 	SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Msk | SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_TICKINT_Msk;
+	//PB15 - data line
+	//PB13 - CLK
+	//PA8 - leech enable
+
 }
 
 
@@ -158,4 +181,15 @@ int main(void)
 			GPIOC->BSRR = GPIO_BSRR_BR_9;
 		}
 	}
+
+
 }
+
+/*
+ *
+ */
+
+
+
+
+
