@@ -60,18 +60,40 @@ static void usage(uint16_t xx, uint16_t yy)
 {
 
 	uint32_t coords = ((uint32_t ) yy<<8) | (uint32_t ) xx;
-	if(!(SPI2->SR & SPI_SR_BSY))
-	{
-		GPIOA->BSRR = GPIO_BSRR_BR_8;
-		SPI2->DR = coords;
-	}
+	SPI2->DR = coords;
 
 }
 
 
+void SPI2_IRQHandler(void)
+{
+
+
+	if (SPI2->SR & SPI_SR_RXNE)
+	{
+
+		//GPIOC->ODR ^= GPIO_ODR_6;
+		GPIOA->BSRR = GPIO_BSRR_BS_8; // leech
+		volatile uint32_t lol = SPI2->DR;
+		switch(crossState)
+		{
+			case(0):
+				usage(heh.x1,heh.y1);
+				break;
+			case(1):
+				usage(heh.x2,heh.y2);
+				break;
+			default:
+				usage(heh.x3,heh.y3);
+		}
+		crossState = (crossState + 1) % 3;
+		GPIOA->BSRR = GPIO_BSRR_BR_8; // leech
+
+	}
+}
+
 void SysTick_Handler(void)
 {
-	GPIOA->BSRR = GPIO_BSRR_BS_8; // leach
 
 	uint32_t button1 = GPIOA->IDR & GPIO_IDR_4;
 	uint32_t button2 = GPIOA->IDR & GPIO_IDR_5;
@@ -108,20 +130,13 @@ void SysTick_Handler(void)
 		GPIOC->BSRR = GPIO_BSRR_BR_12 ;
 		GPIOA->BSRR = GPIO_BSRR_BS_15 ;
 	}
-	switch(crossState)
-	{
-		case(0):
-			usage(heh.x1,heh.y1);
-			break;
-		case(1):
-			usage(heh.x2,heh.y2);
-			break;
-		default:
-			usage(heh.x3,heh.y3);
-	}
-	crossState = (crossState + 1) % 3;
+
 }
 
+
+//аппаратные прерывания
+// NVIC контроллер прерываний
+//
 
 
 void Init(void)
@@ -131,14 +146,9 @@ void Init(void)
 	//a15 and c12 for buttons
 	GPIOA->MODER |= (GPIO_MODER_MODER8_0 | GPIO_MODER_MODER15_0);
 	GPIOA->PUPDR |= (GPIO_PUPDR_PUPDR4_1 | GPIO_PUPDR_PUPDR5_1);
-	GPIOC->MODER |= GPIO_MODER_MODER12_0;
+	GPIOC->MODER |= (GPIO_MODER_MODER12_0 | GPIO_MODER_MODER6_0);
 
-	//SPI config
-	RCC->APB1ENR |= RCC_APB1ENR_SPI2EN;
-	SPI2->CR1 = SPI_CR1_SSM | SPI_CR1_SSI | SPI_CR1_BR | SPI_CR1_MSTR | SPI_CR1_CPOL | SPI_CR1_CPHA;
 
-	SPI2->CR2 |= SPI_CR2_DS;
-	SPI2->CR1 |= SPI_CR1_SPE;
 
 	RCC->AHBENR |= RCC_AHBENR_GPIOBEN;
 	//GPIOB->AFR[0] |= Fn << 4 * pinNumber if Pn < 8
@@ -155,6 +165,17 @@ void Init(void)
 	heh.y2 = 0x10;
 	heh.x3 = 0x08;
 	heh.y3 = 0x20;
+
+
+	//SPI config
+	RCC->APB1ENR |= RCC_APB1ENR_SPI2EN;
+	SPI2->CR2 = SPI_CR2_DS | SPI_CR2_RXNEIE;
+	SPI2->CR1 = SPI_CR1_SSM | SPI_CR1_SSI | SPI_CR1_BR | SPI_CR1_MSTR | SPI_CR1_CPOL | SPI_CR1_CPHA;
+	SPI2->CR1 |= SPI_CR1_SPE;
+
+	NVIC_EnableIRQ(SPI2_IRQn);
+	usage(heh.x1, heh.y1);
+
 }
 
 volatile uint16_t x = 0x08;
@@ -173,7 +194,6 @@ int main(void)
 	// 8 - yellow
 	// 9 - green
 	Init();
-
 
 	//я обязательно перестану костылить
 
