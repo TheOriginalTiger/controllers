@@ -1,73 +1,36 @@
 #include <stm32f0xx.h>
 #include <stdint.h>
-
+#include <string.h>
 
 #define BUTTON_FILTER 5
+#define AMOUNTOFDATA 128
+
+volatile uint8_t values[8];
+volatile uint8_t status;
 
 
-volatile uint8_t flag = 0 ;
-
-volatile uint8_t pressed1 = 0;
-volatile int counter1 = 0;
-
-volatile uint8_t pressed2 = 0;
-volatile int counter2 = 0;
-
-volatile uint8_t pressed3 = 0;
-volatile int counter3 = 0;
-
-volatile uint8_t pressed4 = 0;
-volatile int counter4 = 0;
-
-volatile uint32_t lastButton1 = 0 ;
-volatile uint32_t lastButton2 = 0;
-volatile uint32_t lastButton3 = 0 ;
-volatile uint32_t lastButton4 = 0;
-
-
-typedef struct cross_t {
-	uint16_t x1, y1;
-	uint16_t x2, y2;
-	uint16_t x3, y3;
-} cross;
-
-volatile uint8_t crossState = 0;
-
-//normal'niy naming dlya pidorasov
-cross heh;
-void checkButton(uint32_t* curr, volatile uint32_t* lastButton, volatile int* counter)
+void usage(uint8_t x , uint8_t yy)
 {
-	if (*curr != *lastButton)
-	{
-		*counter = 0 ;
-		*lastButton = *curr;
-	}
-	else
-		(*counter)++;
-
-}
-
-void changer(volatile uint8_t* button, volatile int* counter)
-{
-
-	if (*counter == BUTTON_FILTER)
-	{
-		*button = 1;
-	}
-}
-
-static void usage(uint16_t xx, uint16_t yy)
-{
-
-	uint32_t coords = ((uint32_t ) yy<<8) | (uint32_t ) xx;
+	uint8_t xx = 1 << x;
+	uint8_t res = yy >> 5;
+	uint32_t coords = (((uint32_t ) xx) <<8) | ((1<< res ) );
 	SPI2->DR = coords;
 
 }
 
 
+
+void addNewData(uint8_t data)
+{
+	for(int i =0; i < 7; i++)
+	{
+		values[i] = values[i+1];
+	}
+	values[7] = data;
+}
+
 void SPI2_IRQHandler(void)
 {
-
 
 	if (SPI2->SR & SPI_SR_RXNE)
 	{
@@ -75,78 +38,57 @@ void SPI2_IRQHandler(void)
 		//GPIOC->ODR ^= GPIO_ODR_6;
 		GPIOA->BSRR = GPIO_BSRR_BS_8; // leech
 		volatile uint32_t lol = SPI2->DR;
-		switch(crossState)
-		{
-			case(0):
-				usage(heh.x1,heh.y1);
-				break;
-			case(1):
-				usage(heh.x2,heh.y2);
-				break;
-			default:
-				usage(heh.x3,heh.y3);
-		}
-		crossState = (crossState + 1) % 3;
+		usage(status, values[7 - status]);
+		status = (status + 1) % 8;
 		GPIOA->BSRR = GPIO_BSRR_BR_8; // leech
 
 	}
 }
 
-void SysTick_Handler(void)
+volatile uint8_t FLAG;
+volatile uint8_t fromAds[AMOUNTOFDATA];
+volatile uint8_t prevValue;
+volatile uint8_t newValue;
+volatile uint8_t valuesStatus;
+
+void DMA1_Channel1_IRQHandler()
 {
-
-	uint32_t button1 = GPIOA->IDR & GPIO_IDR_4;
-	uint32_t button2 = GPIOA->IDR & GPIO_IDR_5;
-	if(flag)
+	GPIOC->BSRR = GPIO_BSRR_BS_6;
+	FLAG =1;
+	if(DMA1->ISR & DMA_ISR_TCIF1)
 	{
-		flag = 0;
-		checkButton(&button1, &lastButton1, &counter1);
-		checkButton(&button2, &lastButton2, &counter2);
-
-		if(button1)
-		{
-			changer(&pressed1, &counter1);
-		}
-		if (button2)
-		{
-			changer(&pressed2,&counter2);
-
-		}
-
-		GPIOC->BSRR =  GPIO_BSRR_BS_12 ;
-		GPIOA->BSRR =  GPIO_BSRR_BR_15 ;
+		DMA1->IFCR = DMA_IFCR_CGIF1;
+		valuesStatus = 2;
 	}
-	else
+	else if(DMA1->ISR & DMA_ISR_HTIF1)
 	{
-		flag = 1;
-		checkButton(&button1, &lastButton4, &counter4);
-		checkButton(&button2, &lastButton3, &counter3);
-
-		if(button1)
-			changer(&pressed4,&counter4);
-		if (button2)
-			changer(&pressed3,&counter3);
-
-		GPIOC->BSRR = GPIO_BSRR_BR_12 ;
-		GPIOA->BSRR = GPIO_BSRR_BS_15 ;
+		DMA1->IFCR = DMA_ISR_HTIF1;
+		valuesStatus = 1;
 	}
-
 }
-
 
 //аппаратные прерывания
 // NVIC контроллер прерываний
 //
 
 
+void SysTick_Handler()
+{
+	if (newValue != prevValue)
+	{
+		//addNewData(newValue);
+		prevValue = newValue;
+	}
+}
+
 void Init(void)
 {
 	RCC->AHBENR |= (RCC_AHBENR_GPIOAEN | RCC_AHBENR_GPIOCEN);
 
 	//a15 and c12 for buttons
-	GPIOA->MODER |= (GPIO_MODER_MODER8_0 | GPIO_MODER_MODER15_0);
+	GPIOA->MODER |= (GPIO_MODER_MODER8_0 | GPIO_MODER_MODER15_0 | GPIO_MODER_MODER1_0 | GPIO_MODER_MODER1_1); // MODERA_1 - PA ANALOG
 	GPIOA->PUPDR |= (GPIO_PUPDR_PUPDR4_1 | GPIO_PUPDR_PUPDR5_1);
-	GPIOC->MODER |= (GPIO_MODER_MODER12_0 | GPIO_MODER_MODER6_0);
+	GPIOC->MODER |= (GPIO_MODER_MODER12_0 | GPIO_MODER_MODER6_0 | GPIO_MODER_MODER9_0 );
 
 
 
@@ -157,14 +99,10 @@ void Init(void)
 
 
 	SystemCoreClockUpdate();
-	SysTick->LOAD = SystemCoreClock / 2000 - 1;
-	SysTick->VAL =  SystemCoreClock / 2000 - 1;
-	SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Pos | SysTick_CTRL_ENABLE_Msk | SysTick_CTRL_TICKINT_Msk;
-	heh.x1 = heh.y1 = 0x08;
-	heh.x2 = 0x1C;
-	heh.y2 = 0x10;
-	heh.x3 = 0x08;
-	heh.y3 = 0x20;
+	SysTick->LOAD = SystemCoreClock / 10 - 1;
+	SysTick->VAL =  SystemCoreClock / 10 - 1;
+	SysTick->CTRL = SysTick_CTRL_CLKSOURCE_Pos | SysTick_CTRL_ENABLE_Msk ;//| SysTick_CTRL_TICKINT_Msk;
+
 
 
 	//SPI config
@@ -174,16 +112,39 @@ void Init(void)
 	SPI2->CR1 |= SPI_CR1_SPE;
 
 	NVIC_EnableIRQ(SPI2_IRQn);
-	usage(heh.x1, heh.y1);
+	usage(1,1);
 
+
+	//ADC!
+	RCC->APB2ENR |= RCC_APB2ENR_ADC1EN;
+
+	ADC1->CFGR1 |=  ADC_CFGR1_DMACFG ;
+	ADC1->CR |= ADC_CR_ADCAL;
+	while (ADC1->CR & ADC_CR_ADCAL){}
+
+	ADC1->CR |= ADC_CR_ADEN;
+	ADC1->ISR |= ADC_ISR_ADRDY;
+	while(!(ADC1->ISR & ADC_ISR_ADRDY))
+	{
+		ADC1->CR |= ADC_CR_ADEN;
+	}
+
+	ADC1->CHSELR |= ADC_CHSELR_CHSEL1;
+	ADC1->CFGR1 |= ADC_CFGR1_RES_1;
+	ADC1->CFGR1 |= ADC_CFGR1_CONT | ADC_CFGR1_OVRMOD;
+	ADC1->CR |= ADC_CR_ADSTART;
+	//DMA
+
+	RCC->AHBENR |= RCC_AHBENR_DMAEN;
+	ADC1->CFGR1 |= ADC_CFGR1_DMAEN ;
+	DMA1_Channel1->CCR |= DMA_CCR_MINC | DMA_CCR_CIRC | DMA_CCR_HTIE | DMA_CCR_TCIE | DMA_CCR_PSIZE_0 ;
+
+	DMA1_Channel1->CNDTR = AMOUNTOFDATA;
+	DMA1_Channel1->CPAR = (uint32_t) (&ADC1->DR);
+	DMA1_Channel1->CMAR = (uint32_t) fromAds;
+	DMA1_Channel1->CCR |= DMA_CCR_EN;
+	NVIC_EnableIRQ(DMA1_Channel1_IRQn);
 }
-
-volatile uint16_t x = 0x08;
-volatile uint16_t y = 0x08;
-
-
-
-
 
 
 int main(void)
@@ -192,58 +153,46 @@ int main(void)
 	// 6 - red
 	// 7 - blue
 	// 8 - yellow
-	// 9 - green
+	// 9 - green					GPIOC->BSRR = GPIO_BSRR_BS_6;
 	Init();
 
 	//я обязательно перестану костылить
+	int counter = 0 ;
+	uint32_t result = 0 ;
 
 	while (1)
 	{
-
-		if(pressed2)
+		if (FLAG)
 		{
-			// ненавижу программирование
-			if(heh.x1 < 0x40)
+			switch(valuesStatus)
 			{
-				heh.x1 = heh.x1 << 1;
-				heh.x2 = heh.x2 << 1;
-				heh.x3 = heh.x3 << 1;
+				case(1):
+						GPIOC->BSRR = GPIO_BSRR_BS_6;
+						for(int i =0 ; i < AMOUNTOFDATA/2; i++  )
+						{
+							result += fromAds[i] ;
+						}
+						break;
+				default:
+						GPIOC->BSRR = GPIO_BSRR_BS_9;
+						for(int i =AMOUNTOFDATA/2 ; i < AMOUNTOFDATA; i++  )
+						{
+							result += fromAds[i] ;
+						}
+						break;
 			}
-			pressed2 = 0 ;
-		}
-		if(pressed1)
-		{
-			if(heh.x1 > 0x02)
+			newValue = (uint8_t) (result / (AMOUNTOFDATA / 2));
+			result = 0;
+			counter++;
+			if (counter == 300)
 			{
-				heh.x1 = heh.x1 >> 1;
-				heh.x2 = heh.x2 >> 1;
-				heh.x3 = heh.x3 >> 1;
+				addNewData(newValue);
+				counter =0;
 			}
-			pressed1 = 0 ;
-		}
-		if(pressed4)
-		{
-			if(heh.y1 < 0x40)
-			{
-
-				heh.y1 = heh.y1 << 1;
-				heh.y2 = heh.y2 << 1;
-				heh.y3 = heh.y3 << 1;
-			}
-			pressed4 = 0 ;
-		}
-		if(pressed3)
-		{
-			if(heh.y1 > 0x01)
-			{
-
-				heh.y1 = heh.y1 >> 1;
-				heh.y2 = heh.y2 >> 1;
-				heh.y3 = heh.y3 >> 1;
-			}
-			pressed3 = 0 ;
+			FLAG = 0;
 		}
 	}
+
 
 }
 
