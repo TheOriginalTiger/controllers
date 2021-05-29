@@ -65,10 +65,6 @@ void PushFrame(int curr_frame, PatternS pat){
 		else SPI2->DR = pat.frames[curr_frame];
 }
 
-void SysTick_Handler(void){ 
-	ButtonsCheker();
-}
-
 
 static void SPI_init(){
 	GPIOA->MODER |= GPIO_MODER_MODER8_0;
@@ -126,48 +122,39 @@ void USART_Init(){
 	GPIOA->AFR[1] |= (1 << 4 * (9 - 8)) | (1 << 4 * (10 - 8));
 	RCC->APB2ENR |= RCC_APB2ENR_USART1EN;  // Clock on USART1
 	//GPIOA->MODER |= GPIO_MODER_MODER9_0;   // Tx pin -> Output mode
-	GPIOA->PUPDR |= GPIO_PUPDR_PUPDR9_0 | GPIO_PUPDR_PUPDR10_0;   // pull up;  TX-???
 	/* (1) Oversampling by 16 */
 	/* (2) Single-wire half-duplex mode */
 	/* (3) 8 data bit, 1 start bit, 1 stop bit, no parity, reception and
 	transmission enabled */
-	USART1->BRR = 48 * 6; /* (1) */ /*baud rate = 1(6 * 10**-6)  BRR = 48MHz / baudrate */
-	USART1->CR3 = USART_CR3_HDSEL; /* (2) */
-	USART1->CR1 = USART_CR1_RE | USART_CR1_UE; /* (3) */
+	USART1->BRR = 48000000 / 9600; /* (1) */ /*104 mks*/
+	//USART1->CR3 |= USART_CR3_HDSEL; /* (2) */
+	USART1->CR1 |= USART_CR1_TE | USART_CR1_RE | USART_CR1_UE; /* (3) */
 	
-	// CHECK START ------------------------
-	while ((USART1->ISR & USART_ISR_RXNE) != USART_ISR_RXNE){
-		// waiting until data will be received
-	}
-	char chartoreceive = (uint8_t)(USART1->RDR); /* Receive data, clear flag */
-	if (chartoreceive == 0)
-		GPIOC->BSRR = GPIO_BSRR_BS_8;
-	// CHECK END   ________________________
-	
+
 	/* Polling idle frame Transmission */
-	USART1->CR1 = USART_CR1_TE;
 	while ((USART1->ISR & USART_ISR_TC) != USART_ISR_TC)
 	{
 	/* add time out here for a robust application */
 	}
-	USART1->ICR |= USART_ICR_TCCF; /* Clear TC flag */
-	
-	/*
-	USART1->CR2 |= USART_CR2_ABRMODE_0;
-	USART1->CR2 |= USART_CR2_ABREN;
-	if((USART1->ISR & USART_ISR_TC) == USART_ISR_TC){
-		USART1->TDR = 0;
-	}*/
-	//USART1->CR1 |= USART_CR1_TCIE; /* Enable TC interrupt */
-	/*while (~(USART1->ISR) & USART_ISR_ABRF){
-		reset_pulse();
-	}*/
+	//USART1->ICR |= USART_ICR_TCCF; /* Clear TC flag */
+
+	USART1->TDR = 0xFE;
+	//USART1->CR1 &= ~ (USART_CR1_UE | USART_CR1_TE | USART_CR1_RE );
+	//USART1->BRR = 48000000 / 115200; /* (1) */ /*104 mks*/
+
+	//USART1->CR1 |= USART_CR1_TE | USART_CR1_RE | USART_CR1_UE; /* (3) */
 	while ((USART1->ISR & USART_ISR_RXNE) != USART_ISR_RXNE){
 		// waiting until data will be received
 	}
-	chartoreceive = (uint8_t)(USART1->RDR); /* Receive data, clear flag */
-	if (chartoreceive == 0)
+	//GPIOC->BSRR = GPIO_BSRR_BS_6;  // Red light
+	uint8_t chartoreceive = (uint8_t)(USART1->RDR); /* Receive data, clear flag */
+	if (chartoreceive == 0x0)
 		GPIOC->BSRR = GPIO_BSRR_BS_9;
+
+	while ((USART1->ISR & USART_ISR_RXNE) != USART_ISR_RXNE){
+			// waiting until data will be received
+	}
+	GPIOC->BSRR = GPIO_BSRR_BS_6;  // Red light
 }
 
 
@@ -214,8 +201,8 @@ int main(void){
 	
 	SPI_init();
 	
+
 	USART_Init();
-	GPIOC->BSRR = GPIO_BSRR_BS_6;  // Red light
 	return 0;
 	
 }
