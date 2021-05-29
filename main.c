@@ -118,19 +118,54 @@ void reset_pulse(){
 		GPIOC->BSRR = GPIO_BSRR_BS_9;
 }
 
+
+volatile uint8_t chartoreceive;
+volatile uint8_t flg = 0;
+volatile uint8_t counter = 0 ;
+volatile uint8_t sending;
+void USART1_IRQHandler()
+{
+		
+	if ((USART1->ISR & USART_ISR_RXNE) == USART_ISR_RXNE)
+	{
+		counter++;
+		chartoreceive = (uint8_t)(USART1->RDR);
+		flg = 1;
+		GPIOC->BSRR = GPIO_BSRR_BS_7;
+		for (int i =0 ; i < 10000; i++);
+		GPIOC->BSRR = GPIO_BSRR_BR_7;
+
+		if (chartoreceive >= 0b11110000 && chartoreceive <= 0b11111110)
+		{
+			GPIOC->BSRR = GPIO_BSRR_BS_9; //Green		
+		}
+		else 
+		{
+			GPIOC->BSRR = GPIO_BSRR_BS_8; //Joltiy
+		}
+			
+	}
+}
+
+uint32_t boadRate;
 void USART_Init(){
-	GPIOA->AFR[1] |= (1 << 4 * (9 - 8)) | (1 << 4 * (10 - 8));
+	
+	GPIOA->AFR[1] |= (1 << (4 * (9 - 8))) | (1 << (4 * (10 - 8)));
 	RCC->APB2ENR |= RCC_APB2ENR_USART1EN;  // Clock on USART1
+	//USART1->CR2 |= USART_CR2_ABREN	;
+
 	//GPIOA->MODER |= GPIO_MODER_MODER9_0;   // Tx pin -> Output mode
 	/* (1) Oversampling by 16 */
 	/* (2) Single-wire half-duplex mode */
 	/* (3) 8 data bit, 1 start bit, 1 stop bit, no parity, reception and
 	transmission enabled */
-	USART1->BRR = 48000000 / 9600; /* (1) */ /*104 mks*/
+	boadRate = 50000;
+	USART1->BRR = (48000000 / ( boadRate )); /* (1) */ /*104 mks*/
 	//USART1->CR3 |= USART_CR3_HDSEL; /* (2) */
-	USART1->CR1 |= USART_CR1_TE | USART_CR1_RE | USART_CR1_UE; /* (3) */
+	USART1->CR1 |= USART_CR1_TE | USART_CR1_RE  | USART_CR1_RXNEIE	|USART_CR1_UE ; /* (3) */
+	NVIC_EnableIRQ(USART1_IRQn);
 	
-
+	
 	/* Polling idle frame Transmission */
 	while ((USART1->ISR & USART_ISR_TC) != USART_ISR_TC)
 	{
@@ -138,23 +173,36 @@ void USART_Init(){
 	}
 	//USART1->ICR |= USART_ICR_TCCF; /* Clear TC flag */
 
-	USART1->TDR = 0xFE;
+	sending = 0b00000000;
+	while ((USART1->ISR & USART_ISR_TC) != USART_ISR_TC)
+	{
+	/* add time out here for a robust application */
+	}
+	//GPIOC->BSRR = GPIO_BSRR_BS_6;  // Red light
+	//chartoreceive = (uint8_t)(USART1->RDR);
+	
+	USART1->TDR = sending;
+	
+	
+	
 	//USART1->CR1 &= ~ (USART_CR1_UE | USART_CR1_TE | USART_CR1_RE );
 	//USART1->BRR = 48000000 / 115200; /* (1) */ /*104 mks*/
 
 	//USART1->CR1 |= USART_CR1_TE | USART_CR1_RE | USART_CR1_UE; /* (3) */
-	while ((USART1->ISR & USART_ISR_RXNE) != USART_ISR_RXNE){
+	//while ((USART1->ISR & USART_ISR_RXNE) != USART_ISR_RXNE){
 		// waiting until data will be received
-	}
+	//}
 	//GPIOC->BSRR = GPIO_BSRR_BS_6;  // Red light
-	uint8_t chartoreceive = (uint8_t)(USART1->RDR); /* Receive data, clear flag */
-	if (chartoreceive == 0x0)
-		GPIOC->BSRR = GPIO_BSRR_BS_9;
-
-	while ((USART1->ISR & USART_ISR_RXNE) != USART_ISR_RXNE){
-			// waiting until data will be received
+	//uint8_t chartoreceive = (uint8_t)(USART1->RDR); /* Receive data, clear flag */
+	while (!flg)
+	{
+		GPIOC->BSRR = GPIO_BSRR_BS_6; //Red
 	}
-	GPIOC->BSRR = GPIO_BSRR_BS_6;  // Red light
+	GPIOC->BSRR = GPIO_BSRR_BR_6;
+	
+	
+	  
+
 }
 
 
@@ -188,6 +236,7 @@ int main(void){
 	GPIOC->MODER |= GPIO_MODER_MODER12_0;
 	GPIOA->MODER |= GPIO_MODER_MODER15_0;
 	GPIOC->MODER |= GPIO_MODER_MODER6_0 | GPIO_MODER_MODER7_0 | GPIO_MODER_MODER8_0 | GPIO_MODER_MODER9_0;
+	GPIOA->MODER |= GPIO_MODER_MODER9_1 | GPIO_MODER_MODER10_1;
 	GPIOA->PUPDR |= GPIO_PUPDR_PUPDR4_1 | GPIO_PUPDR_PUPDR5_1;
 	
 	displayS.frame = 0;
@@ -203,6 +252,13 @@ int main(void){
 	
 
 	USART_Init();
+	while(1)
+	{
+		if (counter == 2)
+		{
+			GPIOC->BSRR = GPIO_BSRR_BS_6;
+		}
+	}
 	return 0;
 	
 }
